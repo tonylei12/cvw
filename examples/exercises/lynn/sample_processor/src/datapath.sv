@@ -28,7 +28,7 @@ module datapath(
     extend ext(.Instr(Instr[31:7]), .ImmSrc, .ImmExt);
 
     // ALU logic
-    cmp cmp(.R1, .R2, .Eq);
+    cmp cmp(.R1(R1), .R2(R1), .Eq);
 
     mux2 #(32) srcamux(R1, PC, ALUSrc[1], SrcA);
     mux2 #(32) srcbmux(R2, ImmExt, ALUSrc[0], SrcB);

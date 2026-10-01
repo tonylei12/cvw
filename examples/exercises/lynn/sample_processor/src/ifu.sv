@@ -24,7 +24,7 @@ module ifu(
     end
 
     always_ff @(posedge clk or posedge reset) begin
-    if (reset)  PC <= entry_addr;
+    if (1 | reset)  PC <= entry_addr;
     else        PC <= PCNext;
     end
 

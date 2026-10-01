@@ -12,6 +12,9 @@
 # Zifencei extension not implemented
 --override cpu/Zifencei=F
 
+# SScofpmf extension implemented
+--override cpu/Sscofpmf=T
+
 # Little endian only
 --override cpu/endianFixed=T
 

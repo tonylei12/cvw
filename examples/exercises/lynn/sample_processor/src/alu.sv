@@ -23,7 +23,7 @@ module alu(
     // Set less than based on subtraction result
     assign Overflow = (SrcA[31] ^ SrcB[31]) & (SrcA[31] ^ Sum[31]);
     assign Neg = Sum[31];
-    assign LT = Neg ^ Overflow;
+    assign LT = Neg;
     assign SLT = {31'b0, LT};
     assign ALUFunct = Funct3 & {3{ALUOp}}; // Force ALUFunct to 0 to Add when ALUOp = 0
 

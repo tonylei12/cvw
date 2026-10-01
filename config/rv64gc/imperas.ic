@@ -39,6 +39,7 @@
 --override cpu/Zfa=T
 --override cpu/Zcb=T
 --override cpu/Sstc=T
+--override cpu/Sscofpmf=T
 
 # mcause and scause have 5 lsbs of code and 1 msb of interrupt flag
 --override cpu/ecode_mask=0x800000000000001F # for RV64
