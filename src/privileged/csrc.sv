@@ -67,6 +67,10 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
   localparam MTIMEH           = 12'hB81;               // this is a memory-mapped register; no such CSR exists, and access should fault
   localparam MHPMEVENTBASE    = 12'h323;
   localparam MHPMEVENTLAST    = 12'h33F;
+  localparam MHPMEVENTHBASE   = 12'h723;
+  localparam MHPMEVENTHLAST   = 12'h73F;
+
+
   // SystemVerilog has no zero-width array, so keep one unused element when no hpmevents exist
   localparam HPMEVENTTOP      = P.COUNTERS > 3 ? P.COUNTERS - 1 : 3;
   localparam HPMCOUNTERBASE   = 12'hC00;
@@ -78,17 +82,23 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
   logic [P.XLEN-1:0]       HPMCOUNTER_REGW[P.COUNTERS-1:0];
   logic [P.XLEN-1:0]       HPMCOUNTERH_REGW[P.COUNTERS-1:0];
   logic [P.XLEN-1:0]       MHPMEVENT_REGW[HPMEVENTTOP:3];
+
+  logic [P.XLEN-1:0]       MHPMEVENTH_REGW[HPMEVENTTOP:3];
   logic                    LoadStallE, LoadStallM;
   logic                    StoreStallE, StoreStallM;
   logic [P.COUNTERS-1:0]   WriteHPMCOUNTERM;
   logic [P.COUNTERS-1:0]   WriteHPMCOUNTERHM;
   logic [HPMEVENTTOP:3]    WriteMHPMEVENTM;
+  logic [HPMEVENTTOP:3]    WriteMHPMEVENTHM;
+
   logic [31:0]             CounterEvent; // keep all events here even if P.COUNTERS < 32
   logic [P.COUNTERS-1:0]   CounterInc;
   logic [63:0]             HPMCOUNTERPlusM[P.COUNTERS-1:0];
   logic [P.XLEN-1:0]       NextHPMCOUNTERHM[P.COUNTERS-1:0];
   logic [P.XLEN-1:0]       NextHPMCOUNTERM[P.COUNTERS-1:0];
   logic [P.XLEN-1:0]       NextMHPMEVENTM[HPMEVENTTOP:3];
+  logic [P.XLEN-1:0]       NextMHPMEVENTHM[HPMEVENTTOP:3];
+
 
   genvar                   i;
 
@@ -141,6 +151,12 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
       assign WriteHPMCOUNTERM[i] = CSRMWriteM & (CSRAdrM == MHPMCOUNTERBASE + i); // coverage tag: MTIME traps
       assign NextHPMCOUNTERM[i][P.XLEN-1:0] = WriteHPMCOUNTERM[i] ? CSRWriteValM : HPMCOUNTERPlusM[i][P.XLEN-1:0];
       if (i < 3) assign CounterInc[i] = CounterEvent[i] & ~MCOUNTINHIBIT_REGW[i]; // MCYCLE, CYCLE, and MINSTRET are always incremented if not inhibited
+      else if (P.SSCOFPMF_SUPPORTED & P.XLEN == 32 & i >= 3) assign CounterInc[i] = CounterEvent[i] & ~MCOUNTINHIBIT_REGW[i] &
+                (MHPMEVENT_REGW[i][31:0] != 0) & ((PrivilegeModeW == P.M_MODE & ~MHPMEVENTH_REGW[i][30]) |
+                (PrivilegeModeW == P.S_MODE & ~MHPMEVENTH_REGW[i][29]) | (PrivilegeModeW == P.U_MODE & ~MHPMEVENTH_REGW[i][28]));
+      else if (P.SSCOFPMF_SUPPORTED & P.XLEN == 64 & i >= 3) assign CounterInc[i] = CounterEvent[i] & ~MCOUNTINHIBIT_REGW[i] &
+                (MHPMEVENT_REGW[i][31:0] != 0) & ((PrivilegeModeW == P.M_MODE & ~MHPMEVENT_REGW[i][62]) |
+                (PrivilegeModeW == P.S_MODE & ~MHPMEVENT_REGW[i][61]) | (PrivilegeModeW == P.U_MODE & ~MHPMEVENT_REGW[i][60]));
       else       assign CounterInc[i] = CounterEvent[i] & ~MCOUNTINHIBIT_REGW[i] & (MHPMEVENT_REGW[i] != 0); // user-defined counters are incremented only if the event is enabled
       always_ff @(posedge clk)
         if (reset) HPMCOUNTER_REGW[i][P.XLEN-1:0] <= '0;
@@ -164,9 +180,44 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
     for (i = 3; i < P.COUNTERS; i = i+1) begin : mhpmevent
       assign WriteMHPMEVENTM[i] = CSRMWriteM & (CSRAdrM == MHPMEVENTBASE + i - 3);
       assign NextMHPMEVENTM[i] = WriteMHPMEVENTM[i] ? CSRWriteValM : MHPMEVENT_REGW[i];
-      always_ff @(posedge clk)
-        if (reset) MHPMEVENT_REGW[i] <= '0;
-        else       MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i];
+
+      assign WriteMHPMEVENTHM[i] = CSRMWriteM & (CSRAdrM == MHPMEVENTHBASE + i - 3);
+      assign NextMHPMEVENTHM[i] = WriteMHPMEVENTHM[i] ? CSRWriteValM : MHPMEVENTH_REGW[i];
+      if (P.SSCOFPMF_SUPPORTED) begin : privfilt
+        logic [63:0] PRIV_MODE_FILT_MASK;
+         assign PRIV_MODE_FILT_MASK[63:62] = 2'h3;
+         if(!P.S_SUPPORTED) assign PRIV_MODE_FILT_MASK[61] = 1'h0;
+         else assign PRIV_MODE_FILT_MASK[61] = 1'h1;
+         if(!P.U_SUPPORTED) assign PRIV_MODE_FILT_MASK[60] = 1'h0;
+         else assign PRIV_MODE_FILT_MASK[60] = 1'h1;
+         assign PRIV_MODE_FILT_MASK[59:56] = 4'h0;
+         assign PRIV_MODE_FILT_MASK[55:0] = 56'hFFFFFFFFFFFFFF;
+
+         if (P.XLEN == 64) begin : privfilt64
+           always_ff @(posedge clk) begin
+             if (reset) begin
+              MHPMEVENT_REGW[i] <= '0;
+             end
+             else MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i] & PRIV_MODE_FILT_MASK;
+            end
+            assign MHPMEVENTH_REGW[i] = '0;
+         end else begin : privfilt32
+           always_ff @(posedge clk)
+             if (reset) begin
+              MHPMEVENT_REGW[i] <= '0;
+              MHPMEVENTH_REGW[i] <= '0;
+             end
+             else begin
+              MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i];
+              MHPMEVENTH_REGW[i] <= NextMHPMEVENTHM[i] & PRIV_MODE_FILT_MASK[63:32];
+             end
+         end
+      end
+      else begin : noprivfilt
+        always_ff @(posedge clk)
+          if (reset) MHPMEVENT_REGW[i] <= '0;
+          else       MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i];
+      end
     end
   end else begin : mhpmeventgen // no hpmevents exist; drive the placeholder element HPMEVENTTOP reserves
     assign WriteMHPMEVENTM = '0;
@@ -183,11 +234,15 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
         if (CSRAdrM < MHPMEVENTBASE+P.COUNTERS-3) CSRCReadValM = MHPMEVENT_REGW[CounterNumM];
         else CSRCReadValM ='0; // unused event selectors are read-only zero
       end
+    else if (PrivilegeModeW == P.M_MODE & P.XLEN == 32 & P.SSCOFPMF_SUPPORTED &(CSRAdrM >= MHPMEVENTHBASE & CSRAdrM <= MHPMEVENTHLAST)) begin
+        if (CSRAdrM < MHPMEVENTHBASE+P.COUNTERS-3) CSRCReadValM = MHPMEVENTH_REGW[CounterNumM];
+        else CSRCReadValM ='0; // unused event selectors are read-only zero
+      end
     else if (PrivilegeModeW == P.M_MODE |
       MCOUNTEREN_REGW[CounterNumM] & (!P.S_SUPPORTED | PrivilegeModeW == P.S_MODE | SCOUNTEREN_REGW[CounterNumM])) begin
         // The branch conditions below guarantee CounterNumM < P.COUNTERS before it indexes the
         // counter arrays, but Verilator sizes the index from the array bound, so it warns whenever
-        // P.COUNTERS < 32.  This region also covers the MTIME_CLINT reads, which Verilator does not
+        // P.COUNTERS < 32.  This region also covers the MTIME_CLINT reads, which  Verilator does not
         // realize happen only at one XLEN.
         /* verilator lint_off WIDTH */
         if (P.XLEN==64) begin // 64-bit counter reads
