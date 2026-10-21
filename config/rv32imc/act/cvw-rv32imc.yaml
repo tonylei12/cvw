@@ -9,6 +9,7 @@ implemented_extensions:
   - { name: I, version: "= 2.1" }
   - { name: M, version: "= 2.0" }
   - { name: C, version: "= 2.0" }
+  - { name: Sscofpmf, version: "= 1.0.0" }
   - { name: Zicntr, version: "= 2.0" }
   - { name: Zicsr, version: "= 2.0" }
   - { name: Zihpm, version: "= 2.0.0" }

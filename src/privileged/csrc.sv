@@ -57,6 +57,7 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
   input  logic [P.XLEN-1:0] CSRWriteValM,
   input  logic [31:0]       MCOUNTINHIBIT_REGW, MCOUNTEREN_REGW, SCOUNTEREN_REGW,
   input  logic [63:0]       MTIME_CLINT,
+  output logic [31:0]       SCOUNTOVF_REGW,
   output logic [P.XLEN-1:0] CSRCReadValM,
   output logic              IllegalCSRCAccessM
 );
@@ -70,7 +71,6 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
   localparam MHPMEVENTHBASE   = 12'h723;
   localparam MHPMEVENTHLAST   = 12'h73F;
 
-
   // SystemVerilog has no zero-width array, so keep one unused element when no hpmevents exist
   localparam HPMEVENTTOP      = P.COUNTERS > 3 ? P.COUNTERS - 1 : 3;
   localparam HPMCOUNTERBASE   = 12'hC00;
@@ -82,8 +82,8 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
   logic [P.XLEN-1:0]       HPMCOUNTER_REGW[P.COUNTERS-1:0];
   logic [P.XLEN-1:0]       HPMCOUNTERH_REGW[P.COUNTERS-1:0];
   logic [P.XLEN-1:0]       MHPMEVENT_REGW[HPMEVENTTOP:3];
-
   logic [P.XLEN-1:0]       MHPMEVENTH_REGW[HPMEVENTTOP:3];
+
   logic                    LoadStallE, LoadStallM;
   logic                    StoreStallE, StoreStallM;
   logic [P.COUNTERS-1:0]   WriteHPMCOUNTERM;
@@ -187,11 +187,10 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
         logic [63:0] PRIV_MODE_FILT_MASK;
          assign PRIV_MODE_FILT_MASK[63:62] = 2'h3;
          if(!P.S_SUPPORTED) assign PRIV_MODE_FILT_MASK[61] = 1'h0;
-         else assign PRIV_MODE_FILT_MASK[61] = 1'h1;
+         else               assign PRIV_MODE_FILT_MASK[61] = 1'h1;
          if(!P.U_SUPPORTED) assign PRIV_MODE_FILT_MASK[60] = 1'h0;
-         else assign PRIV_MODE_FILT_MASK[60] = 1'h1;
-         assign PRIV_MODE_FILT_MASK[59:56] = 4'h0;
-         assign PRIV_MODE_FILT_MASK[55:0] = 56'hFFFFFFFFFFFFFF;
+         else               assign PRIV_MODE_FILT_MASK[60] = 1'h1;
+         assign PRIV_MODE_FILT_MASK[59:0] = {4'h0, 56'hFFFFFFFFFFFFFF}; // bits 59:58 are read-only zero, 57:56 are reserved
 
          if (P.XLEN == 64) begin : privfilt64
            always_ff @(posedge clk) begin
@@ -223,6 +222,23 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
     assign WriteMHPMEVENTM = '0;
     assign NextMHPMEVENTM[3] = '0;
     assign MHPMEVENT_REGW[3] = '0;
+  end
+
+  // scountovf update logic
+  if (P.SSCOFPMF_SUPPORTED & P.S_SUPPORTED) begin : scountovfgen
+    localparam SCOUNTOVFTOP = P.COUNTERS < 32 ? P.COUNTERS : 32;
+    assign SCOUNTOVF_REGW[2:0] = '0;
+    for (i = 3; i < SCOUNTOVFTOP; i = i+1) begin : scountovf
+      always_comb
+        if (P.XLEN == 32) SCOUNTOVF_REGW[i] = MHPMEVENTH_REGW[i][P.XLEN-1];
+        else              SCOUNTOVF_REGW[i] = MHPMEVENT_REGW[i][P.XLEN-1];
+    end
+    for (i = SCOUNTOVFTOP; i < 32; i = i+1) begin : scountovftop
+      assign SCOUNTOVF_REGW[i] = i >= 3 ? '0 : SCOUNTOVF_REGW[i];
+    end
+  end
+  else begin : scountovfgen
+    assign SCOUNTOVF_REGW = '0;
   end
 
   // Read Counters, or cause exception if insufficient privilege in light of COUNTEREN flags

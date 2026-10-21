@@ -25,7 +25,7 @@ module controller(
     logic Branch, Jump;
     logic Sub, ALUOp;
     logic MemWrite;
-    logic        controls;
+    logic [11:0]controls;
 
     // Main decoder
     always_comb

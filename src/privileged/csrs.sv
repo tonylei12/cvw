@@ -31,7 +31,7 @@
 
 module csrs import cvw::*;  #(parameter cvw_t P) (
   input  logic              clk, reset,
-  input  logic              CSRSWriteM, STrapM,
+  input  logic              CSRSWriteM, CSRWriteM, STrapM,
   input  logic [11:0]       CSRAdrM,
   input  logic [P.XLEN-1:0] NextEPCM, NextXtvalM, SSTATUS_REGW,
   input  logic [5:0]        NextCauseM,
@@ -45,6 +45,7 @@ module csrs import cvw::*;  #(parameter cvw_t P) (
   input  logic [11:0]       MIP_REGW, MIE_REGW, MIDELEG_REGW,
   input  logic [63:0]       MTIME_CLINT,
   input  logic              STCE,
+  input  logic [31:0]       SCOUNTOVF_REGW, MCOUNTEREN_REGW,
   output logic              WriteSSTATUSM,
   output logic              IllegalCSRSAccessM,
   output logic              STimerInt,
@@ -66,6 +67,7 @@ module csrs import cvw::*;  #(parameter cvw_t P) (
   localparam STIMECMP   = 12'h14D;
   localparam STIMECMPH  = 12'h15D;
   localparam SATP       = 12'h180;
+  localparam SCOUNTOVF  = 12'hDA0;
   // Constants
   // scounteren can only be written for counters that are supported by Zicntr or Zihpm and are nonzero
   localparam COUNTEREN_MASK = (P.ZICNTR_SUPPORTED ? 32'h00000007 : 32'h0) |
@@ -162,6 +164,10 @@ module csrs import cvw::*;  #(parameter cvw_t P) (
       SCAUSE:    CSRSReadValM = SCAUSE_REGW;
       STVAL:     CSRSReadValM = STVAL_REGW;
       SATP:      if (PrivilegeModeW == P.M_MODE | ~STATUS_TVM) CSRSReadValM = SATP_REGW;
+                 else IllegalCSRSAccessM = 1'b1;
+      SCOUNTOVF: if (CSRWriteM) IllegalCSRSAccessM = 1'b1;
+                 else if (PrivilegeModeW == P.M_MODE & P.SSCOFPMF_SUPPORTED) CSRSReadValM = {{(P.XLEN-32){1'b0}}, SCOUNTOVF_REGW};
+                 else if (PrivilegeModeW == P.S_MODE & P.SSCOFPMF_SUPPORTED) CSRSReadValM = {{(P.XLEN-32){1'b0}}, SCOUNTOVF_REGW & MCOUNTEREN_REGW};
                  else IllegalCSRSAccessM = 1'b1;
       SCOUNTEREN:CSRSReadValM = {{(P.XLEN-32){1'b0}}, SCOUNTEREN_REGW};
       SENVCFG:   CSRSReadValM = SENVCFG_REGW;
