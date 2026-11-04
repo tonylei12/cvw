@@ -116,6 +116,7 @@ module csr import cvw::*;  #(parameter cvw_t P) (
   logic [P.XLEN-1:0]       UnalignedNextEPCM, NextEPCM, NextXtvalM;
   logic [5:0]              NextCauseM;
   logic [11:0]             CSRAdrM;
+  logic                    LCofInt,
   logic                    IllegalCSRCAccessM, IllegalCSRMAccessM, IllegalCSRSAccessM, IllegalCSRUAccessM;
   logic                    InsufficientCSRPrivilegeM;
   logic                    IllegalCSRMWriteReadonlyM;
@@ -219,7 +220,7 @@ module csr import cvw::*;  #(parameter cvw_t P) (
 
   csri #(P) csri(.clk, .reset,
     .CSRMWriteM, .CSRSWriteM, .CSRWriteValM, .CSRAdrM,
-    .MExtInt, .SExtInt, .MTimerInt, .STimerInt, .MSwInt,
+    .LCofInt, .MExtInt, .SExtInt, .MTimerInt, .STimerInt, .MSwInt,
     .MIDELEG_REGW, .ENVCFG_STCE, .MIP_REGW, .MIE_REGW, .MIP_REGW_writeable);
 
   csrsr #(P) csrsr(.clk, .reset, .StallW,
@@ -288,7 +289,7 @@ module csr import cvw::*;  #(parameter cvw_t P) (
     .InterruptM, .ExceptionM, .InvalidateICacheM, .ICacheStallF, .DCacheStallM, .DivBusyE, .FDivBusyE,
     .CSRAdrM, .PrivilegeModeW, .CSRWriteValM,
     .MCOUNTINHIBIT_REGW, .MCOUNTEREN_REGW, .SCOUNTEREN_REGW,
-    .MTIME_CLINT, .SCOUNTOVF_REGW, .CSRCReadValM, .IllegalCSRCAccessM);
+    .MTIME_CLINT, .LCofInt, .SCOUNTOVF_REGW, .CSRCReadValM, .IllegalCSRCAccessM);
 
    // Broadcast appropriate environment configuration based on privilege mode
   assign ENVCFG_STCE =  MENVCFG_REGW[63]; // supervisor timer counter enable

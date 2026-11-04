@@ -33,14 +33,14 @@ module csri import cvw::*;  #(parameter cvw_t P) (
   input  logic              CSRMWriteM, CSRSWriteM,
   input  logic [P.XLEN-1:0] CSRWriteValM,
   input  logic [11:0]       CSRAdrM,
-  input  logic              MExtInt, SExtInt, MTimerInt, STimerInt, MSwInt,
-  input  logic [11:0]       MIDELEG_REGW,
+  input  logic              LCofInt, MExtInt, SExtInt, MTimerInt, STimerInt, MSwInt,
+  input  logic [15:0]       MIDELEG_REGW,
   input  logic              ENVCFG_STCE,
-  output logic [11:0]       MIP_REGW, MIE_REGW,
-  output logic [11:0]       MIP_REGW_writeable // only SEIP, STIP, SSIP are actually writeable; the rest are hardwired to 0
+  output logic [15:0]       MIP_REGW, MIE_REGW,
+  output logic [15:0]       MIP_REGW_writeable // only SEIP, STIP, SSIP are actually writeable; the rest are hardwired to 0
 );
 
-  logic [11:0]              MIP_WRITE_MASK, SIP_WRITE_MASK, MIE_WRITE_MASK, SIE_WRITE_MASK;
+  logic [15:0]              MIP_WRITE_MASK, SIP_WRITE_MASK, MIE_WRITE_MASK, SIE_WRITE_MASK;
   logic                     WriteMIPM, WriteMIEM, WriteSIPM, WriteSIEM;
   logic                     STIP;
 
@@ -86,7 +86,7 @@ module csri import cvw::*;  #(parameter cvw_t P) (
     else if (WriteMIEM) MIE_REGW <= (CSRWriteValM[11:0] & MIE_WRITE_MASK); // MIE controls M and S fields
     else if (WriteSIEM) MIE_REGW <= (CSRWriteValM[11:0] & SIE_WRITE_MASK) | (MIE_REGW & ~SIE_WRITE_MASK); // only S fields
 
-  assign MIP_REGW = {MExtInt,   1'b0, SExtInt|MIP_REGW_writeable[9],  1'b0,
-                     MTimerInt, 1'b0, STIP,                           1'b0,
-                     MSwInt,    1'b0, MIP_REGW_writeable[1],          1'b0};
+  assign MIP_REGW = {2'b0, LCofInt, 1'b0, MExtInt, 1'b0, SExtInt|MIP_REGW_writeable[9], 1'b0,
+                     MTimerInt, 1'b0, STIP,                                       1'b0,
+                     MSwInt,    1'b0, MIP_REGW_writeable[1],                      1'b0};
 endmodule

@@ -57,6 +57,7 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
   input  logic [P.XLEN-1:0] CSRWriteValM,
   input  logic [31:0]       MCOUNTINHIBIT_REGW, MCOUNTEREN_REGW, SCOUNTEREN_REGW,
   input  logic [63:0]       MTIME_CLINT,
+  output logic              LCofInt,
   output logic [31:0]       SCOUNTOVF_REGW,
   output logic [P.XLEN-1:0] CSRCReadValM,
   output logic              IllegalCSRCAccessM
@@ -160,7 +161,7 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
       else       assign CounterInc[i] = CounterEvent[i] & ~MCOUNTINHIBIT_REGW[i] & (MHPMEVENT_REGW[i] != 0); // user-defined counters are incremented only if the event is enabled
       always_ff @(posedge clk)
         if (reset) HPMCOUNTER_REGW[i][P.XLEN-1:0] <= '0;
-        else       HPMCOUNTER_REGW[i][P.XLEN-1:0] <= NextHPMCOUNTERM[i];
+        else HPMCOUNTER_REGW[i][P.XLEN-1:0] <= NextHPMCOUNTERM[i];
 
       if (P.XLEN==32) begin // write high and low separately
         assign HPMCOUNTERPlusM[i] = {HPMCOUNTERH_REGW[i], HPMCOUNTER_REGW[i]} + {63'b0, CounterInc[i]};
@@ -170,6 +171,8 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
             if (reset) HPMCOUNTERH_REGW[i][P.XLEN-1:0] <= '0;
             else       HPMCOUNTERH_REGW[i][P.XLEN-1:0] <= NextHPMCOUNTERHM[i];
       end else begin // XLEN=64; write entire register
+          assign WriteHPMCOUNTERHM[i] = '0;
+          assign NextHPMCOUNTERHM[i] = '0;
           assign HPMCOUNTERPlusM[i] = HPMCOUNTER_REGW[i] + {63'b0, CounterInc[i]};
           assign HPMCOUNTERH_REGW[i] = '0; // disregard for RV64
       end
@@ -177,14 +180,20 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
 
   // hpmevent update and write logic
   if (P.COUNTERS > 3) begin : mhpmeventgen
+    logic [P.COUNTERS-1:0] GenOverflowInt;
+    assign GenOverflowInt[2:0] = '0;
     for (i = 3; i < P.COUNTERS; i = i+1) begin : mhpmevent
       assign WriteMHPMEVENTM[i] = CSRMWriteM & (CSRAdrM == MHPMEVENTBASE + i - 3);
-      assign NextMHPMEVENTM[i] = WriteMHPMEVENTM[i] ? CSRWriteValM : MHPMEVENT_REGW[i];
-
       assign WriteMHPMEVENTHM[i] = CSRMWriteM & (CSRAdrM == MHPMEVENTHBASE + i - 3);
-      assign NextMHPMEVENTHM[i] = WriteMHPMEVENTHM[i] ? CSRWriteValM : MHPMEVENTH_REGW[i];
-      if (P.SSCOFPMF_SUPPORTED) begin : privfilt
-        logic [63:0] PRIV_MODE_FILT_MASK;
+
+      if (P.SSCOFPMF_SUPPORTED) begin : sscofpmf
+        logic CountOverflow, CountOverflowH;
+        assign CountOverflow = (P.XLEN == 64) & (HPMCOUNTER_REGW[i][P.XLEN-1:0] == {(P.XLEN){1'b1}})
+              & (NextHPMCOUNTERM[i][P.XLEN-1:0] == {(P.XLEN){1'b0}}) & ~WriteHPMCOUNTERM[i] | ((P.XLEN == 64) & MHPMEVENT_REGW[i][P.XLEN-1] == 1'b1);
+        assign CountOverflowH = (P.XLEN == 32) & (HPMCOUNTERH_REGW[i][P.XLEN-1:0] == {(P.XLEN){1'b1}})
+              & (NextHPMCOUNTERHM[i][P.XLEN-1:0] == {(P.XLEN){1'b0}}) & ~WriteHPMCOUNTERM[i] & ~WriteHPMCOUNTERHM[i] | ((P.XLEN == 32) & MHPMEVENTH_REGW[i][P.XLEN-1] == 1'b1);
+
+         logic [63:0] PRIV_MODE_FILT_MASK;
          assign PRIV_MODE_FILT_MASK[63:62] = 2'h3;
          if(!P.S_SUPPORTED) assign PRIV_MODE_FILT_MASK[61] = 1'h0;
          else               assign PRIV_MODE_FILT_MASK[61] = 1'h1;
@@ -193,36 +202,69 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
          assign PRIV_MODE_FILT_MASK[59:0] = {4'h0, 56'hFFFFFFFFFFFFFF}; // bits 59:58 are read-only zero, 57:56 are reserved
 
          if (P.XLEN == 64) begin : privfilt64
-           always_ff @(posedge clk) begin
-             if (reset) begin
+          assign NextMHPMEVENTM[i] = WriteMHPMEVENTM[i] ? CSRWriteValM : {CountOverflow, MHPMEVENT_REGW[i][P.XLEN-2:0]};
+          assign NextMHPMEVENTHM[i] = '0;
+           always_ff @(posedge clk)
+             if (reset)begin
+              GenOverflowInt[i] <= 1'b0;
               MHPMEVENT_REGW[i] <= '0;
              end
-             else MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i] & PRIV_MODE_FILT_MASK;
-            end
+             else begin
+              if(CountOverflow & MHPMEVENT_REGW[i][P.XLEN-1] == 1'b0) GenOverflowInt[i] <= 1'b1;
+              else GenOverflowInt[i] <= 1'b0;
+              MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i] & PRIV_MODE_FILT_MASK;
+             end
             assign MHPMEVENTH_REGW[i] = '0;
-         end else begin : privfilt32
+          end
+          else begin : privfilt32
+          assign NextMHPMEVENTM[i] = WriteMHPMEVENTM[i] ? CSRWriteValM : MHPMEVENT_REGW[i];
+          assign NextMHPMEVENTHM[i] = WriteMHPMEVENTHM[i] ? CSRWriteValM : {CountOverflowH, MHPMEVENTH_REGW[i][P.XLEN-2:0]};
            always_ff @(posedge clk)
              if (reset) begin
+              GenOverflowInt[i] <= 1'b0;
               MHPMEVENT_REGW[i] <= '0;
               MHPMEVENTH_REGW[i] <= '0;
              end
              else begin
+              if(CountOverflowH & MHPMEVENTH_REGW[i][P.XLEN-1] == 1'b0) GenOverflowInt[i] <= 1'b1;
+              else GenOverflowInt[i] <= 1'b0;
               MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i];
               MHPMEVENTH_REGW[i] <= NextMHPMEVENTHM[i] & PRIV_MODE_FILT_MASK[63:32];
              end
          end
       end
       else begin : noprivfilt
+        assign NextMHPMEVENTM[i] = WriteMHPMEVENTM[i] ? CSRWriteValM : MHPMEVENT_REGW[i][P.XLEN-1:0];
+        assign NextMHPMEVENTHM[i] = '0;
+        assign GenOverflowInt[i] = '0;
+
         always_ff @(posedge clk)
-          if (reset) MHPMEVENT_REGW[i] <= '0;
+          if (reset) begin MHPMEVENT_REGW[i] <= '0; MHPMEVENTH_REGW[i] <= '0; end
           else       MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i];
       end
     end
+    if (P.SSCOFPMF_SUPPORTED) assign LCofInt = |GenOverflowInt;
+    else assign LCofInt = '0;
   end else begin : mhpmeventgen // no hpmevents exist; drive the placeholder element HPMEVENTTOP reserves
     assign WriteMHPMEVENTM = '0;
     assign NextMHPMEVENTM[3] = '0;
     assign MHPMEVENT_REGW[3] = '0;
+    assign LCofInt = '0;
   end
+
+  if (P.SSCOFPMF_SUPPORTED) begin : lcofintgen
+    logic [P.COUNTERS-1:0] OF, NextOF;
+    for (i = 3; i < P.COUNTERS; i = i+1) begin : lcofint
+      assign NextOF[i] = (P.XLEN == 64) ? (HPMEVENT_REGW[i][P.XLEN-1]) : (HPMEVENTH_REGW[i][P.XLEN-1]);
+    end
+
+    always_ff @(posedge clk)
+      if (reset) OF <= 1'b0;
+      else       OF <= NextOF;
+
+    assign LCofInt = OF != NextOF & |NextOF;
+  end
+
 
   // scountovf update logic
   if (P.SSCOFPMF_SUPPORTED & P.S_SUPPORTED) begin : scountovfgen
