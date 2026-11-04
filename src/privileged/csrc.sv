@@ -161,7 +161,7 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
       else       assign CounterInc[i] = CounterEvent[i] & ~MCOUNTINHIBIT_REGW[i] & (MHPMEVENT_REGW[i] != 0); // user-defined counters are incremented only if the event is enabled
       always_ff @(posedge clk)
         if (reset) HPMCOUNTER_REGW[i][P.XLEN-1:0] <= '0;
-        else HPMCOUNTER_REGW[i][P.XLEN-1:0] <= NextHPMCOUNTERM[i];
+        else       HPMCOUNTER_REGW[i][P.XLEN-1:0] <= NextHPMCOUNTERM[i];
 
       if (P.XLEN==32) begin // write high and low separately
         assign HPMCOUNTERPlusM[i] = {HPMCOUNTERH_REGW[i], HPMCOUNTER_REGW[i]} + {63'b0, CounterInc[i]};
@@ -205,13 +205,13 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
           assign NextMHPMEVENTM[i] = WriteMHPMEVENTM[i] ? CSRWriteValM : {CountOverflow, MHPMEVENT_REGW[i][P.XLEN-2:0]};
           assign NextMHPMEVENTHM[i] = '0;
            always_ff @(posedge clk)
-             if (reset)begin
+             if (reset) begin
               GenOverflowInt[i] <= 1'b0;
               MHPMEVENT_REGW[i] <= '0;
              end
              else begin
-              if(CountOverflow & MHPMEVENT_REGW[i][P.XLEN-1] == 1'b0) GenOverflowInt[i] <= 1'b1;
-              else GenOverflowInt[i] <= 1'b0;
+              if (CountOverflow & MHPMEVENT_REGW[i][P.XLEN-1] == 1'b0) GenOverflowInt[i] <= 1'b1;
+              else                                                     GenOverflowInt[i] <= 1'b0;
               MHPMEVENT_REGW[i] <= NextMHPMEVENTM[i] & PRIV_MODE_FILT_MASK;
              end
             assign MHPMEVENTH_REGW[i] = '0;
@@ -244,27 +244,13 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
       end
     end
     if (P.SSCOFPMF_SUPPORTED) assign LCofInt = |GenOverflowInt;
-    else assign LCofInt = '0;
+    else                      assign LCofInt = '0;
   end else begin : mhpmeventgen // no hpmevents exist; drive the placeholder element HPMEVENTTOP reserves
     assign WriteMHPMEVENTM = '0;
     assign NextMHPMEVENTM[3] = '0;
     assign MHPMEVENT_REGW[3] = '0;
     assign LCofInt = '0;
   end
-
-  if (P.SSCOFPMF_SUPPORTED) begin : lcofintgen
-    logic [P.COUNTERS-1:0] OF, NextOF;
-    for (i = 3; i < P.COUNTERS; i = i+1) begin : lcofint
-      assign NextOF[i] = (P.XLEN == 64) ? (HPMEVENT_REGW[i][P.XLEN-1]) : (HPMEVENTH_REGW[i][P.XLEN-1]);
-    end
-
-    always_ff @(posedge clk)
-      if (reset) OF <= 1'b0;
-      else       OF <= NextOF;
-
-    assign LCofInt = OF != NextOF & |NextOF;
-  end
-
 
   // scountovf update logic
   if (P.SSCOFPMF_SUPPORTED & P.S_SUPPORTED) begin : scountovfgen
