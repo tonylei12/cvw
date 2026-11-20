@@ -180,8 +180,7 @@ module csrc  import cvw::*;  #(parameter cvw_t P) (
 
   // hpmevent update and write logic
   if (P.COUNTERS > 3) begin : mhpmeventgen
-    logic [P.COUNTERS-1:0] GenOverflowInt;
-    assign GenOverflowInt[2:0] = '0;
+    logic [P.COUNTERS-1:3] GenOverflowInt;
     for (i = 3; i < P.COUNTERS; i = i+1) begin : mhpmevent
       assign WriteMHPMEVENTM[i] = CSRMWriteM & (CSRAdrM == MHPMEVENTBASE + i - 3);
       assign WriteMHPMEVENTHM[i] = CSRMWriteM & (CSRAdrM == MHPMEVENTHBASE + i - 3);

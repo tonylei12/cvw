@@ -35,7 +35,7 @@ module trap import cvw::*;  #(parameter cvw_t P) (
   input  logic                 LoadPageFaultM, StoreAmoPageFaultM,              // various trap sources
   input  logic                 wfiM, wfiW,                                      // wait for interrupt instruction
   input  logic [1:0]           PrivilegeModeW,                                  // current privilege mode
-  input  logic [15:0]          MIP_REGW, MIE_REGW, MIDELEG_REGW,                // interrupt pending, enabled, and delegate CSRs
+  input  logic [13:0]          MIP_REGW, MIE_REGW, MIDELEG_REGW,                // interrupt pending, enabled, and delegate CSRs
   input  logic [15:0]          MEDELEG_REGW,                                    // exception delegation SR
   input  logic                 STATUS_MIE, STATUS_SIE,                          // machine/supervisor interrupt enables
   input  logic                 InstrValidM,                                     // current instruction is valid, not flushed
@@ -51,7 +51,7 @@ module trap import cvw::*;  #(parameter cvw_t P) (
   logic                        MIntGlobalEnM, SIntGlobalEnM;                    // Global interrupt enables
   logic                        Committed;                                       // LSU or IFU has committed to a bus operation that can't be interrupted
   logic                        BothInstrAccessFaultM, BothInstrPageFaultM;      // instruction or HPTW ITLB fill caused an Instruction Access Fault
-  logic [15:0]                 PendingIntsM, ValidIntsM, EnabledIntsM;          // interrupts are pending, valid, or enabled
+  logic [13:0]                 PendingIntsM, ValidIntsM, EnabledIntsM;          // interrupts are pending, valid, or enabled
 
   ///////////////////////////////////////////
   // Determine pending enabled interrupts

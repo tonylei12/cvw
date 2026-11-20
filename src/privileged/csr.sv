@@ -77,7 +77,7 @@ module csr import cvw::*;  #(parameter cvw_t P) (
   output logic                     STATUS_SPP, STATUS_TSR, STATUS_TVM,
   output logic [15:0]              MEDELEG_REGW,
   output logic [P.XLEN-1:0]        SATP_REGW,
-  output logic [11:0]              MIP_REGW, MIE_REGW, MIDELEG_REGW,
+  output logic [13:0]              MIP_REGW, MIE_REGW, MIDELEG_REGW,
   output logic                     STATUS_MIE, STATUS_SIE,
   output logic                     STATUS_MXR, STATUS_SUM, STATUS_MPRV, STATUS_TW,
   output logic [1:0]               STATUS_FS,
@@ -116,12 +116,12 @@ module csr import cvw::*;  #(parameter cvw_t P) (
   logic [P.XLEN-1:0]       UnalignedNextEPCM, NextEPCM, NextXtvalM;
   logic [5:0]              NextCauseM;
   logic [11:0]             CSRAdrM;
-  logic                    LCofInt,
+  logic                    LCofInt;
   logic                    IllegalCSRCAccessM, IllegalCSRMAccessM, IllegalCSRSAccessM, IllegalCSRUAccessM;
   logic                    InsufficientCSRPrivilegeM;
   logic                    IllegalCSRMWriteReadonlyM;
   logic [P.XLEN-1:0]       CSRReadVal2M;
-  logic [11:0]             MIP_REGW_writeable;
+  logic [13:0]             MIP_REGW_writeable;
   logic [P.XLEN-1:0]       TVecM,NextFaultXtvalM;
   logic                    MTrapM, STrapM;
   logic                    SelMtvecM;
@@ -183,7 +183,7 @@ module csr import cvw::*;  #(parameter cvw_t P) (
     CSRSrcM = InstrM[14] ? {{(P.XLEN-5){1'b0}}, InstrM[19:15]} : SrcAM;
 
     // CSR set and clear for MIP/SIP should only touch internal state, not interrupt inputs
-    if (CSRAdrM == MIP | CSRAdrM == SIP) CSRReadVal2M = {{(P.XLEN-12){1'b0}}, MIP_REGW_writeable};
+    if (CSRAdrM == MIP | CSRAdrM == SIP) CSRReadVal2M = {{(P.XLEN-14){1'b0}}, MIP_REGW_writeable};
     else                                 CSRReadVal2M = CSRReadValM;
 
     // Compute AND/OR modification
